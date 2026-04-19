@@ -262,7 +262,7 @@ def check_prerequisites():
             try:
                 run_command(["apt-get", "update"])
                 # Try to install docker.io and docker-compose-v2 (for 'docker compose' command)
-                run_command(["apt-get", "install", "-y", "docker.io", "docker-compose-v2"])
+                run_command(["apt-get", "install", "-y", "docker.io", "docker-compose-plugin"])
                 print("Enabling and starting Docker service...")
                 run_command(["systemctl", "enable", "--now", "docker"])
             except Exception as e:
