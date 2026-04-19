@@ -1,4 +1,9 @@
-# Self-hosted AI Package
+# VPN-Optimized Local AI Package
+
+This repository is modified from the original to remove Let's Encrypt, Caddy, and Ollama. It binds all service ports directly to the host for easy access over a local network or VPN. Just clone, copy `.env.example` to `.env`, and run `python3 start_services.py`.
+
+---
+
 
 **Self-hosted AI Package** is an open, docker compose template that
 quickly bootstraps a fully featured Local AI and Low Code development
@@ -145,7 +150,7 @@ The project includes a `start_services.py` script that handles starting both the
 ### For Nvidia GPU users
 
 ```bash
-python start_services.py --profile gpu-nvidia
+python3 start_services.py
 ```
 
 > [!NOTE]
@@ -155,7 +160,7 @@ python start_services.py --profile gpu-nvidia
 ### For AMD GPU users on Linux
 
 ```bash
-python start_services.py --profile gpu-amd
+python3 start_services.py
 ```
 
 ### For Mac / Apple Silicon users
@@ -164,12 +169,12 @@ If you're using a Mac with an M1 or newer processor, you can't expose your GPU t
 
 1. Run the starter kit fully on CPU:
    ```bash
-   python start_services.py --profile cpu
+   python3 start_services.py
    ```
 
 2. Run Ollama on your Mac for faster inference, and connect to that from the n8n instance:
    ```bash
-   python start_services.py --profile none
+   python3 start_services.py
    ```
 
    If you want to run Ollama on your mac, check the [Ollama homepage](https://ollama.com/) for installation instructions.
@@ -195,7 +200,7 @@ Additionally, after you see "Editor is now accessible via: http://localhost:5678
 ### For everyone else
 
 ```bash
-python start_services.py --profile cpu
+python3 start_services.py
 ```
 
 ### The environment argument
@@ -205,11 +210,11 @@ The **start-services.py** script offers the possibility to pass one of two optio
 
 The stack initialized with
 ```bash
-   python start_services.py --profile gpu-nvidia --environment private
+   python3 start_services.py
    ```
 equals the one initialized with
 ```bash
-   python start_services.py --profile gpu-nvidia
+   python3 start_services.py
    ```
 
 ## Deploying to the Cloud
@@ -334,7 +339,7 @@ docker compose -p localai -f docker-compose.yml --profile <your-profile> down
 docker compose -p localai -f docker-compose.yml --profile <your-profile> pull
 
 # Start services again with your desired profile
-python start_services.py --profile <your-profile>
+python3 start_services.py
 ```
 
 Replace `<your-profile>` with one of: `cpu`, `gpu-nvidia`, `gpu-amd`, or `none`.
