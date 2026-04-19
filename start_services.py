@@ -233,7 +233,47 @@ def check_and_fix_docker_compose_for_searxng():
     except Exception as e:
         print(f"Error checking/modifying docker-compose.yml for SearXNG: {e}")
 
+
+def check_prerequisites():
+    """Check for git and docker, and attempt to install them if missing (Linux only)."""
+    import shutil
+    
+    # Check Git
+    if not shutil.which("git"):
+        print("Git is not installed.")
+        if platform.system() == "Linux":
+            print("Attempting to install Git...")
+            try:
+                run_command(["apt-get", "update"])
+                run_command(["apt-get", "install", "-y", "git"])
+            except Exception as e:
+                print(f"Failed to install git automatically: {e}")
+                print("Please install git manually and re-run.")
+                sys.exit(1)
+        else:
+            print("Please install Git manually and re-run.")
+            sys.exit(1)
+
+    # Check Docker
+    if not shutil.which("docker"):
+        print("Docker is not installed.")
+        if platform.system() == "Linux":
+            print("Attempting to install Docker...")
+            try:
+                run_command(["curl", "-fsSL", "https://get.docker.com", "-o", "get-docker.sh"])
+                run_command(["sh", "get-docker.sh"])
+                print("Enabling and starting Docker service...")
+                run_command(["systemctl", "enable", "--now", "docker"])
+            except Exception as e:
+                print(f"Failed to install Docker automatically: {e}")
+                print("Please install Docker manually from https://docs.docker.com/get-docker/ and re-run.")
+                sys.exit(1)
+        else:
+            print("Please install Docker Desktop manually from https://docs.docker.com/get-docker/ and re-run.")
+            sys.exit(1)
+
 def main():
+    check_prerequisites()
     parser = argparse.ArgumentParser(description='Start the local AI and Supabase services.')
     parser.add_argument('--environment', choices=['private', 'public'], default='private',
                       help='Environment to use for Docker Compose (default: private)')
