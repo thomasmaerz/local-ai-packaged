@@ -258,18 +258,19 @@ def check_prerequisites():
     if not shutil.which("docker"):
         print("Docker is not installed.")
         if platform.system() == "Linux":
-            print("Attempting to install Docker...")
+            print("Attempting to install Docker via apt-get...")
             try:
-                run_command(["curl", "-fsSL", "https://get.docker.com", "-o", "get-docker.sh"])
-                run_command(["sh", "get-docker.sh"])
+                run_command(["apt-get", "update"])
+                # Try to install docker.io and docker-compose-v2 (for 'docker compose' command)
+                run_command(["apt-get", "install", "-y", "docker.io", "docker-compose-v2"])
                 print("Enabling and starting Docker service...")
                 run_command(["systemctl", "enable", "--now", "docker"])
             except Exception as e:
                 print(f"Failed to install Docker automatically: {e}")
-                print("Please install Docker manually from https://docs.docker.com/get-docker/ and re-run.")
+                print("Please install Docker manually and re-run.")
                 sys.exit(1)
         else:
-            print("Please install Docker Desktop manually from https://docs.docker.com/get-docker/ and re-run.")
+            print("Please install Docker Desktop manually and re-run.")
             sys.exit(1)
 
 def main():
