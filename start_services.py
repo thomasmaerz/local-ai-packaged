@@ -99,10 +99,16 @@ def ensure_litellm_env(env_file_path=".env"):
     }
 
 
-def request_json(url, method="GET", payload=None, timeout=10):
+import base64
+def request_json(url, method="GET", payload=None, timeout=10, auth_user="", auth_pass=""):
     """Send an HTTP request and parse JSON responses."""
     request_headers = {"Accept": "application/json"}
     body = None
+
+    if auth_user is not None and auth_pass is not None:
+        auth_str = f"{auth_user}:{auth_pass}"
+        b64_auth = base64.b64encode(auth_str.encode("utf-8")).decode("utf-8")
+        request_headers["Authorization"] = f"Basic {b64_auth}"
 
     if payload is not None:
         request_headers["Content-Type"] = "application/json"
@@ -119,14 +125,14 @@ def request_json(url, method="GET", payload=None, timeout=10):
             return content
 
 
-def wait_for_flowise(flowise_url, timeout_seconds=180):
+def wait_for_flowise(flowise_url, timeout_seconds=180, auth_user="", auth_pass=""):
     """Wait until Flowise API becomes available."""
     ping_url = f"{flowise_url.rstrip('/')}/api/v1/ping"
     deadline = time.time() + timeout_seconds
 
     while time.time() < deadline:
         try:
-            request_json(ping_url, timeout=5)
+            request_json(ping_url, timeout=5, auth_user=auth_user, auth_pass=auth_pass)
             return True
         except Exception:
             time.sleep(3)
@@ -138,6 +144,8 @@ def sync_flowise_litellm_credential(env_file_path=".env"):
     """Create or update a Flowise LiteLLM credential automatically."""
     env_values = parse_env_file(env_file_path)
     litellm_master_key = env_values.get("LITELLM_MASTER_KEY", "").strip()
+    flowise_user = env_values.get("FLOWISE_USERNAME", "").strip()
+    flowise_pass = env_values.get("FLOWISE_PASSWORD", "").strip()
     if not litellm_master_key:
         print("Warning: LITELLM_MASTER_KEY missing, skipping Flowise credential sync")
         return
@@ -147,7 +155,7 @@ def sync_flowise_litellm_credential(env_file_path=".env"):
     credential_label = env_values.get("FLOWISE_LITELLM_CREDENTIAL_NAME", "LiteLLM Proxy").strip() or "LiteLLM Proxy"
 
     print("Waiting for Flowise before creating LiteLLM credential...")
-    if not wait_for_flowise(flowise_url):
+    if not wait_for_flowise(flowise_url, auth_user=flowise_user, auth_pass=flowise_pass):
         print("Warning: Flowise did not become ready in time; skipping credential automation")
         return
 
@@ -162,7 +170,7 @@ def sync_flowise_litellm_credential(env_file_path=".env"):
     }
 
     try:
-        existing_credentials = request_json(query_url, method="GET", timeout=10)
+        existing_credentials = request_json(query_url, method="GET", timeout=10, auth_user=flowise_user, auth_pass=flowise_pass)
         if isinstance(existing_credentials, dict) and isinstance(existing_credentials.get("data"), list):
             existing_credentials = existing_credentials.get("data")
         if not isinstance(existing_credentials, list):
@@ -176,10 +184,10 @@ def sync_flowise_litellm_credential(env_file_path=".env"):
 
         if matched and matched.get("id"):
             update_url = f"{credentials_url}/{matched['id']}"
-            request_json(update_url, method="PUT", payload=payload, timeout=10)
+            request_json(update_url, method="PUT", payload=payload, timeout=10, auth_user=flowise_user, auth_pass=flowise_pass)
             print(f"Updated Flowise credential: {credential_label}")
         else:
-            request_json(credentials_url, method="POST", payload=payload, timeout=10)
+            request_json(credentials_url, method="POST", payload=payload, timeout=10, auth_user=flowise_user, auth_pass=flowise_pass)
             print(f"Created Flowise credential: {credential_label}")
     except error.HTTPError as http_error:
         print(f"Warning: Could not sync Flowise credential (HTTP {http_error.code}).")
