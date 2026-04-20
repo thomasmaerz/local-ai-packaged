@@ -20,6 +20,7 @@ environment. This is a slimmed-down version of Cole's repository, optimized spec
 ✅ [**Self-hosted n8n**](https://n8n.io/) - Low-code platform with over 400 integrations and advanced AI components
 ✅ [**Supabase**](https://supabase.com/) - Open source database as a service - most widely used database for AI agents
 ✅ [**Open WebUI**](https://openwebui.com/) - ChatGPT-like interface to privately interact with your API models and N8N agents
+✅ [**LiteLLM**](https://docs.litellm.ai/) - Central LLM proxy for API keys, routing, fallback, and model management
 ✅ [**Flowise**](https://flowiseai.com/) - No/low code AI agent builder that pairs very well with n8n
 ✅ [**Qdrant**](https://qdrant.tech/) - Open source, high performance vector store with an comprehensive API. 
 ✅ [**Neo4j**](https://neo4j.com/) - Knowledge graph engine that powers tools like GraphRAG, LightRAG, and Graphiti 
@@ -79,6 +80,8 @@ cd local-ai-packaged
    ENCRYPTION_KEY=  
    ```
 
+3. Leave `LITELLM_MASTER_KEY` and `LITELLM_SALT_KEY` blank unless you want to set your own values. The startup script auto-generates both on first run.
+
 ---
 
 The project includes a `start_services.py` script that handles starting both the Supabase and local AI services. 
@@ -90,6 +93,11 @@ python3 start_services.py
 ```
 
 This will run everything in the "private" mode by default, meaning all service ports are bound directly to your host's IP address (0.0.0.0). You can access them securely over your local LAN or VPN connection.
+
+The startup script also:
+- Generates LiteLLM internal keys in `.env` if missing
+- Pre-configures n8n and Open WebUI to use LiteLLM as the OpenAI-compatible backend
+- Creates/updates a Flowise credential named `LiteLLM Proxy` automatically
 
 ## Deploying
 
@@ -111,21 +119,22 @@ This package includes pre-built n8n workflows in the `n8n/backup/workflows/` fol
 ## ⚡️ Quick start and usage
 
 1. Open `http://<your-server-ip>:5678/` in your browser to set up n8n. You’ll only have to do this once. You are NOT creating an account with n8n in the setup here, it is only a local account for your instance!
-2. Import a workflow from `n8n/backup/workflows/`, then open it from your workflow list.
-3. Create credentials for every service:
+2. Open LiteLLM Admin UI at `http://<your-server-ip>:4000/ui` and add your provider keys (OpenAI, Anthropic, Gemini, etc.) and model routing/fallback rules.
+3. Import a workflow from `n8n/backup/workflows/`, then open it from your workflow list.
+4. Create credentials for every non-LLM service:
    
    Postgres (through Supabase): use DB, username, and password from .env. IMPORTANT: Host is 'db' Since that is the name of the service running Supabase
 
    Qdrant URL: `http://qdrant:6333` (API key can be whatever since this is running locally)
 
-4. Select **Test workflow** to start running the workflow.
-5. Make sure to toggle the workflow as active and copy the "Production" webhook URL!
-6. Open `http://<your-server-ip>:8080/` in your browser to set up Open WebUI. You’ll only have to do this once.
-7. Go to Workspace -> Functions -> Add Function -> Give name + description then paste in the code from `n8n_pipe.py`
-8. Click on the gear icon and set the n8n_url to the production URL for the webhook you copied in a previous step.
-9. Toggle the function on and now it will be available in your model dropdown in the top left! 
+5. Select **Test workflow** to start running the workflow.
+6. Make sure to toggle the workflow as active and copy the "Production" webhook URL!
+7. Open `http://<your-server-ip>:8080/` in your browser to set up Open WebUI. You’ll only have to do this once.
+8. Go to Workspace -> Functions -> Add Function -> Give name + description then paste in the code from `n8n_pipe.py`
+9. Click on the gear icon and set the n8n_url to the production URL for the webhook you copied in a previous step.
+10. Toggle the function on and now it will be available in your model dropdown in the top left! 
 
-To keep everything local/API-driven, remember to configure your favorite API keys (e.g., OpenAI, Anthropic, Google Gemini) in Open WebUI, Flowise, or n8n natively! Local LLM inference (Ollama) has been stripped out of this VPN-optimized package to keep hardware requirements lightweight.
+To keep everything API-driven with centralized control, configure provider keys in LiteLLM only. n8n and Open WebUI are auto-wired to LiteLLM, and Flowise gets a pre-created `litellmApi` credential entry.
 
 ## Upgrading
 

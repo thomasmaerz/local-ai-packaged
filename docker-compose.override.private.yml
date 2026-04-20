@@ -11,6 +11,10 @@ services:
     ports:
       - "5678:5678"
 
+  litellm:
+    ports:
+      - "4000:4000"
+
   qdrant:
     ports:
       - "6333:6333"

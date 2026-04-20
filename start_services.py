@@ -14,11 +14,177 @@ import time
 import argparse
 import platform
 import sys
+import json
+import secrets
+from urllib import error, parse, request
 
 def run_command(cmd, cwd=None):
     """Run a shell command and print it."""
     print("Running:", " ".join(cmd))
     subprocess.run(cmd, cwd=cwd, check=True)
+
+
+def parse_env_file(env_file_path=".env"):
+    """Parse key/value pairs from a .env file."""
+    values = {}
+    if not os.path.exists(env_file_path):
+        return values
+
+    with open(env_file_path, "r", encoding="utf-8") as env_file:
+        for line in env_file:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or "=" not in stripped:
+                continue
+
+            key, value = stripped.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+
+            if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+                value = value[1:-1]
+
+            values[key] = value
+
+    return values
+
+
+def upsert_env_var(env_file_path, key, value):
+    """Insert or update an environment variable in a .env file."""
+    lines = []
+    if os.path.exists(env_file_path):
+        with open(env_file_path, "r", encoding="utf-8") as env_file:
+            lines = env_file.readlines()
+
+    updated = False
+    target_prefix = f"{key}="
+    for index, line in enumerate(lines):
+        if line.strip().startswith(target_prefix):
+            lines[index] = f"{key}={value}\n"
+            updated = True
+            break
+
+    if not updated:
+        if lines and not lines[-1].endswith("\n"):
+            lines[-1] = lines[-1] + "\n"
+        lines.append(f"{key}={value}\n")
+
+    with open(env_file_path, "w", encoding="utf-8") as env_file:
+        env_file.writelines(lines)
+
+
+def ensure_litellm_env(env_file_path=".env"):
+    """Ensure LiteLLM secrets exist in .env, generating them if missing."""
+    if not os.path.exists(env_file_path):
+        raise FileNotFoundError(
+            f"{env_file_path} not found. Copy .env.example to .env before running start_services.py"
+        )
+
+    env_values = parse_env_file(env_file_path)
+    litellm_master_key = env_values.get("LITELLM_MASTER_KEY", "").strip()
+    litellm_salt_key = env_values.get("LITELLM_SALT_KEY", "").strip()
+
+    if not litellm_master_key:
+        litellm_master_key = f"sk-{secrets.token_hex(24)}"
+        upsert_env_var(env_file_path, "LITELLM_MASTER_KEY", litellm_master_key)
+        print("Generated LITELLM_MASTER_KEY in .env")
+
+    if not litellm_salt_key:
+        litellm_salt_key = f"sk-{secrets.token_hex(24)}"
+        upsert_env_var(env_file_path, "LITELLM_SALT_KEY", litellm_salt_key)
+        print("Generated LITELLM_SALT_KEY in .env")
+
+    return {
+        "LITELLM_MASTER_KEY": litellm_master_key,
+        "LITELLM_SALT_KEY": litellm_salt_key,
+    }
+
+
+def request_json(url, method="GET", payload=None, timeout=10):
+    """Send an HTTP request and parse JSON responses."""
+    request_headers = {"Accept": "application/json"}
+    body = None
+
+    if payload is not None:
+        request_headers["Content-Type"] = "application/json"
+        body = json.dumps(payload).encode("utf-8")
+
+    http_request = request.Request(url=url, data=body, headers=request_headers, method=method)
+    with request.urlopen(http_request, timeout=timeout) as response:
+        content = response.read().decode("utf-8").strip()
+        if not content:
+            return None
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            return content
+
+
+def wait_for_flowise(flowise_url, timeout_seconds=180):
+    """Wait until Flowise API becomes available."""
+    ping_url = f"{flowise_url.rstrip('/')}/api/v1/ping"
+    deadline = time.time() + timeout_seconds
+
+    while time.time() < deadline:
+        try:
+            request_json(ping_url, timeout=5)
+            return True
+        except Exception:
+            time.sleep(3)
+
+    return False
+
+
+def sync_flowise_litellm_credential(env_file_path=".env"):
+    """Create or update a Flowise LiteLLM credential automatically."""
+    env_values = parse_env_file(env_file_path)
+    litellm_master_key = env_values.get("LITELLM_MASTER_KEY", "").strip()
+    if not litellm_master_key:
+        print("Warning: LITELLM_MASTER_KEY missing, skipping Flowise credential sync")
+        return
+
+    flowise_url = env_values.get("FLOWISE_URL", "http://localhost:3001").strip() or "http://localhost:3001"
+    flowise_url = flowise_url.rstrip("/")
+    credential_label = env_values.get("FLOWISE_LITELLM_CREDENTIAL_NAME", "LiteLLM Proxy").strip() or "LiteLLM Proxy"
+
+    print("Waiting for Flowise before creating LiteLLM credential...")
+    if not wait_for_flowise(flowise_url):
+        print("Warning: Flowise did not become ready in time; skipping credential automation")
+        return
+
+    credentials_url = f"{flowise_url}/api/v1/credentials"
+    query_url = f"{credentials_url}?{parse.urlencode({'credentialName': 'litellmApi'})}"
+    payload = {
+        "name": credential_label,
+        "credentialName": "litellmApi",
+        "plainDataObj": {
+            "litellmApiKey": litellm_master_key,
+        },
+    }
+
+    try:
+        existing_credentials = request_json(query_url, method="GET", timeout=10)
+        if isinstance(existing_credentials, dict) and isinstance(existing_credentials.get("data"), list):
+            existing_credentials = existing_credentials.get("data")
+        if not isinstance(existing_credentials, list):
+            existing_credentials = []
+
+        matched = None
+        for credential in existing_credentials:
+            if credential.get("name") == credential_label:
+                matched = credential
+                break
+
+        if matched and matched.get("id"):
+            update_url = f"{credentials_url}/{matched['id']}"
+            request_json(update_url, method="PUT", payload=payload, timeout=10)
+            print(f"Updated Flowise credential: {credential_label}")
+        else:
+            request_json(credentials_url, method="POST", payload=payload, timeout=10)
+            print(f"Created Flowise credential: {credential_label}")
+    except error.HTTPError as http_error:
+        print(f"Warning: Could not sync Flowise credential (HTTP {http_error.code}).")
+    except Exception as sync_error:
+        print(f"Warning: Could not sync Flowise credential: {sync_error}")
 
 def clone_supabase_repo():
     """Clone the Supabase repository using sparse checkout if not already present."""
@@ -241,6 +407,7 @@ def main():
 
     clone_supabase_repo()
     fix_windows_line_endings()
+    ensure_litellm_env()
     prepare_supabase_env()
 
     # Generate SearXNG secret key and check docker-compose.yml
@@ -258,6 +425,9 @@ def main():
 
     # Then start the local AI services
     start_local_ai(args.environment)
+
+    # Create/update the Flowise LiteLLM credential for immediate use
+    sync_flowise_litellm_credential()
 
 if __name__ == "__main__":
     main()
