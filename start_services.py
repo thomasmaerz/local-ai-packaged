@@ -434,8 +434,7 @@ def main():
     # Then start the local AI services
     start_local_ai(args.environment)
 
-    # Create/update the Flowise LiteLLM credential for immediate use
-    sync_flowise_litellm_credential()
+
 
 if __name__ == "__main__":
     main()
